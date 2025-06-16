@@ -1,0 +1,91 @@
+import DataOrientedGateway;
+
+import mqtt.libraries;
+
+class ACLMQTTGateway extends DataOrientedGateway {
+
+    GatewayAgent ga_agent;
+
+    MqttClient acp_client;  // ADAPTED
+    String agent2PLC;
+    String PLC2agent;
+
+    StructMessage structMsg;
+
+    ACPMessageFormat = String;  // ADAPTED
+    ACPMessageFormat acp_msg_content = null;
+
+    // Constructor
+    ACLMQTTGateway() {
+        launchAgent();    // Launch Gateway Agent
+        launchACPEntity();   // Launch data-oriented protocol client
+    }
+
+    void launchAgent() {
+        // This method configures and launches the GA with agent-specific libraries
+        ga_agent.launch();
+        // Once the GA agent has been launched, it is also necessary to initialize it
+        structMsg = StructMessage(action="init");
+        ga_agent.processCommand(structMsg);
+    }
+
+    void launchACPEntity() {  // ADAPTED
+        // This method launches the MQTT client with the data-oriented protocol-specific libraries
+
+        String broker = "tcp://192.168.2.151:1883";
+        String clientId = "myAssetName";
+
+        agent2PLC = clientId + "/agent2PLC";
+        PLC2agent = clientId + "/PLC2agent";
+
+        // messageArrived(), deliveryComplete() y connectionLost()
+        mqttClient.setCallback(PLC2agent, receiveFromAssetHandlingMethod);  // ADAPTED
+
+        mqttClient = new MqttClient(broker, clientId);
+        mqttClient.connect(connOpts);
+        System.out.println("Connected");
+
+        mqttClient.subscribe(PLC2agent, qos);
+    }
+
+    void receiveFromAssetHandlingMethod(String topic, MqttMessage message) {  // ADAPTED
+        acp_msg_content = new String(message.getPayload());
+    }
+
+
+    // This is the main loop of the Gateway
+    void main() {
+
+        // First, an instance of the Gateway need to be created
+        gateway_instance = ACLMQTTGateway()
+
+        while (true) {
+            // The main loop must be executed cyclically.
+            receiveFromGA();
+            if (acp_msg_content != null) {
+                sendToGA(acp_msg_content);
+                acp_msg_content = null;
+            }
+        }
+    }
+
+    // This method checks if a message has been received from the GA. If true, it receives it to send the task to the asset
+    void receiveFromGA() {
+        structMsg = StructMessage(action="recv");
+        ga_agent.processCommand(structMsg);
+        // If the GA agent has received a message through ACL, it will update the struct message
+        if (structMsg.getContent() != null) {
+            sendToAsset(structMsg.getContent());  // ADAPTED
+        }
+    }
+
+    void sendToAsset(msg_content) {  // ADAPTED
+        MqttMessage message = new MqttMessage(msg_content);
+        acp_client.publish(agent2PLC, message);
+    }
+
+    void sendToGA(ACPMessageFormat acp_msg_content) {
+        structMsg = StructMessage(action="send", content=acp_msg_content);
+        ga_agent.processCommand(structMsg);
+    }
+}

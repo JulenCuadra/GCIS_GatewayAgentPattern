@@ -1,0 +1,105 @@
+import GatewayAgent;
+import ROSNode;
+
+import ros.libraries;
+import data.oriented.protocol.specific.libraries;
+
+import StructMessage;
+import ACPMessageFormat;
+
+class ACLROSGateway extends DataOrientedGateway {
+
+    GatewayAgent ga_agent;
+    ROSNode acp_ros_node;
+
+    // Data-oriented procotol required topics
+    String toAssetTopic;
+    String fromAssetTopic; 
+
+    StructMessage structMsg;
+    ACPMessageFormat = JSON;   // ADAPTED
+    ACPMessageFormat acp_msg_content = null;
+
+    // Constructor
+    ACLROSGateway() {
+        launchAgent();    // Launch Gateway Agent
+        launchACPEntity();   // Launch data-oriented protocol client
+    }
+
+    void launchAgent() {
+        // This method configures and launches the GA with agent-specific libraries
+        ga_agent.launch();
+        // Once the GA agent has been launched, it is also necessary to initialize it
+        structMsg = StructMessage(action="init");
+        ga_agent.processCommand(structMsg);
+    }
+
+    void launchACPEntity() {   // ADAPTED
+        // This method launches the ROS node with the data-oriented protocol-specific libraries
+
+        String host = InetAddressFactory.newNonLoopback().getHostName();
+        String port = "11311";
+        String masterURI_str = "http://" + host + ":" + port;
+        URI masterURI = new URI(masterURI_str);
+
+        NodeConfiguration nodeConfiguration = NodeConfiguration.newPrivate();
+        nodeConfiguration.setMasterUri(masterURI);
+        nodeConfiguration.setNodeName("NodePubMsg");
+
+        NodeMain nodeMain = (NodeMain) this;
+        NodeMainExecutor nodeMainExecutor = DefaultNodeMainExecutor.newDefault();
+        nodeMainExecutor.execute(nodeMain, nodeConfiguration);
+
+        
+        nodeMain.NewSubscriber(fromAssetTopic, String, receiveFromAssetHandlingMethod);
+    }
+
+    void receiveFromAssetHandlingMethod(std_msgs.String message) {  // ADAPTED
+        acp_msg_content = new JSON(message);
+    }
+
+    // This is the main loop of the Gateway
+    void main() {
+
+        // First, an instance of the Gateway need to be created
+        gateway_instance = ACLROSGateway()
+
+        while (true) {
+            // The main loop must be executed cyclically.
+            receiveFromGA();
+            if (acp_msg_content != null) {
+                sendToGA(acp_msg_content);
+                acp_msg_content = null;
+            }
+        }
+    }
+
+    // This method checks if a message has been received from the GA. If true, it receives it to send the task to the asset
+    void receiveFromGA() {
+        structMsg = StructMessage(action="recv");
+        ga_agent.processCommand(structMsg);
+        // If the GA agent has received a message through ACL, it will update the struct message
+        if (structMsg.getContent() != null) {
+            sendToAsset(structMsg.getContent());  // ADAPTED
+        }
+    }
+
+    void sendToAsset(msg_content) {  // ADAPTED
+        Publisher<transp_state> publisher = connectedNode.newPublisher(toAssetTopic, transp_state._TYPE);
+        StructTranspState javaTranspState = (StructTranspState) msg_content;
+        int entero = javaTranspState.getEntero();
+        String cadena = javaTranspState.getCadena();
+
+        transp_state rosTranspState = publisher.newMessage();
+        rosTranspState.getHeader().setStamp(Time.fromMillis(System.currentTimeMillis()));
+        rosTranspState.setEntero((byte) entero);
+        rosTranspState.setCadena(cadena);
+
+        publisher.publish(rosTranspState);
+    }
+
+    void sendToGA(ACPMessageFormat acp_msg_content) {
+        structMsg = StructMessage(action="send", content=acp_msg_content);
+        ga_agent.processCommand(structMsg);
+    }
+}

@@ -1,0 +1,64 @@
+import StructMessage;
+import ACLMessage;
+
+import AgentIDFormat;
+
+abstract class GatewayAgent {
+
+    ACPMessageFormat latest_acl_msg = null;
+    AgentIDFormat cma_id = "CMA_MAS_identifier";
+
+    void initialize() {
+        // This method performs the initialization process of the GA agent
+        // The behaviour for receiving the message through ACL need to be added (to wait for incoming messages)
+        recv_acl_behaviour = ReceiveFromACLBehaviour(ga_agent);
+        addBehaviour(recv_acl_behaviour);
+    }
+
+    void setLatestACPMessage(ACPMessageFormat new_acl_msg) {
+        latest_acl_msg = new_acl_msg;
+    }
+
+    void processCommand(StructMessage structMsg) {
+        case structMsg.getAction() {
+            "init":
+                initialize();
+            "recv":
+                structMsg.setContent(latest_acl_msg);
+            "send":
+                // This code is dependent of MAS
+                acl_msg = ACLMessage();
+                acl_msg.setOntology("INFORM");
+                acl_msg.setContent(structMsg.getContent());
+                acl_msg.setReceiver(cma_id);
+                send(acl_msg); 
+        }
+    }
+
+    abstract class ReceiveFromACLBehaviour {
+
+        // Constructor
+        ReceiveFromACLBehaviour(ga_agent) {
+            // The agent object is saved so that its attributes can be accessed and modified
+            my_ga_agent = ga_agent;
+        }
+
+        void run() {
+            // This code is totally dependent of MAS
+            if (acl_msg_received == True) {
+                my_ga_agent.setLatestACPMessage(acl_msg.getContent());
+            }
+
+            // It can reply to the sender with CONFIRM message
+            ack_acl_msg = ACLMessage();
+            ack_acl_msg.setOntology("CONFIRM");
+            ack_acl_msg.setContent(acl_msg.getContent());
+            acl_msg.setReceiver(acl_msg.getReceiver());
+            send(acl_msg); 
+
+            // The receiver will always be the CMA, so it can be updated if desired
+            my_ga_agent.cma_id = acl_msg.getReceiver();
+        }
+
+    }
+}

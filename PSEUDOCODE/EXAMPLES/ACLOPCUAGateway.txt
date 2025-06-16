@@ -1,0 +1,142 @@
+import GatewayAgent;
+import ACPClient;
+
+import opc_ua.libraries;
+import data.oriented.protocol.specific.libraries;
+
+import StructMessage;
+import ACPMessageFormat;
+
+class ACLOPCUAGateway extends DataOrientedGateway {
+
+    GatewayAgent ga_agent;
+    ACPClient acp_client;
+
+    StructMessage structMsg;
+
+    ACPMessageFormat = JSON;  // ADAPTED
+    // En el sendToAsset necesita obtener un JSON del string, asi que se supone que el formato es JSON
+    ACPMessageFormat acp_msg_content = null;
+
+    // Constructor
+    ACLOPCUAGateway() {
+        launchAgent();    // Launch Gateway Agent
+        launchACPEntity();   // Launch data-oriented protocol client
+    }
+
+    void launchAgent() {
+        // This method configures and launches the GA with agent-specific libraries
+        ga_agent.launch();
+        // Once the GA agent has been launched, it is also necessary to initialize it
+        structMsg = StructMessage(action="init");
+        ga_agent.processCommand(structMsg);
+    }
+
+    void launchACPEntity() {  // ADAPTED
+        // This method launches the OPC UA client with the data-oriented protocol-specific libraries
+
+        final String endpointUrl = "opc.tcp://192.168.5.11:4840";
+        final EndpointDescription[] endpoints = UaTcpStackClient.getEndpoints(endpointUrl).get();
+        final OpcUaClientConfigBuilder config = new OpcUaClientConfigBuilder();
+        config.setEndpoint(endpoints[0]);
+
+        client = new OpcUaClient(config.build());
+        client.connect().get();
+
+        handling_method_from_asset();  // ADAPTED
+    }
+
+    void receiveFromAssetHandlingMethod() { // ADAPTED
+        while(true) {
+            content_from_asset = receiveFromAsset();
+            if (content_from_asset != null) {
+                acp_msg_content = content_from_asset;
+            }
+        }
+    }
+
+    void receiveFromAsset() {  // ADAPTED
+        //Primero inicializo las variables que voy a necesitar
+        HashMap<String,Object> requestHashMap;
+        HashMap<String,Object> responseHashMap = new HashMap<String, Object>();
+        Boolean Control_Flag_New_Service = true;
+        Boolean Control_Flag_Item_Completed = false;
+        Boolean Control_Flag_Service_Completed = false;
+
+        HashMap<String, NodeId> nodeId = new HashMap<String, NodeId>();
+
+        // Control parameters
+        nodeId.put("Control_Flag_New_Service", new NodeId(4,5));
+        nodeId.put("Control_Flag_Item_Completed", new NodeId(4,6));
+        nodeId.put("Control_Flag_Service_Completed", new NodeId(4,7));
+
+        // ...
+        node = addressSpace.getVariableNode(nodeId.get("Id_Order_Reference_2"));
+        testNode = node.get();
+        value = testNode.readValue();
+        testValue = value.get();
+        
+        return testValue.getValue().getValue();
+
+    }
+
+    // This is the main loop of the Gateway
+    void main() {
+
+        // First, an instance of the Gateway need to be created
+        gateway_instance = ACLOPCUAGateway()
+
+        while (true) {
+            // The main loop must be executed cyclically.
+            receiveFromGA();
+            if (acp_msg_content != null) {
+                sendToGA(acp_msg_content);
+                acp_msg_content = null;
+            }
+        }
+    }
+
+
+    // This method checks if a message has been received from the GA. If true, it receives it to send the task to the asset
+    void receiveFromGA() {
+        structMsg = StructMessage(action="recv");
+        ga_agent.processCommand(structMsg);
+        // If the GA agent has received a message through ACL, it will update the struct message
+        if (structMsg.getContent() != null) {
+            sendToAsset(structMsg.getContent());  // ADAPTED
+        }
+    }
+
+    void sendToAsset(msg_content) {  // ADAPTED
+        //Primero inicializo las variables que voy a necesitar
+        HashMap<String,Object> requestHashMap;
+        HashMap<String,Object> responseHashMap = new HashMap<String, Object>();
+        Boolean Control_Flag_New_Service = true;
+        Boolean Control_Flag_Item_Completed = false;
+        Boolean Control_Flag_Service_Completed = false;
+
+        HashMap<String, NodeId> nodeId = new HashMap<String, NodeId>();
+
+        // Control parameters
+        nodeId.put("Control_Flag_New_Service", new NodeId(4,5));
+        nodeId.put("Control_Flag_Item_Completed", new NodeId(4,6));
+        nodeId.put("Control_Flag_Service_Completed", new NodeId(4,7));
+
+        // ...
+
+        // Después, transformo el mensaje recibido de vuelta en un HashMap
+        requestHashMap = new Gson().fromJson(msg_content, HashMap.class);
+
+        // ...
+        data = new DataValue(new Variant(UInteger.valueOf((String) requestHashMap.get("Id_Order_Reference"))), StatusCode.GOOD, null);
+        status = client.writeValue(nodeId.get("Id_Order_Reference_1"), data).get();
+        // ...
+
+
+    }
+
+    void sendToGA(ACPMessageFormat acp_msg_content) {
+        structMsg = StructMessage(action="send", content=acp_msg_content);
+        ga_agent.processCommand(structMsg);
+    }
+}

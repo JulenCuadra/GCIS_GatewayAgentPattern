@@ -1,0 +1,81 @@
+import GatewayAgent;
+import ACPPubSub;
+
+import agent.specific.libraries;
+import data.oriented.protocol.specific.libraries;
+
+import StructMessage;
+import ACPMessageFormat;
+
+abstract class DataOrientedGatewayManager extends GenericGatewayManager {
+
+    GatewayAgent ga_agent;
+    ACPPubSub acp_pub_sub;
+
+    // Data-oriented protocol required topics
+    String toAssetTopic;
+    String fromAssetTopic;
+
+    StructMessage structMsg;
+    ACPMessageFormat acp_msg_content = null;
+
+    // Constructor
+    DataOrientedGateway() {
+        launchAgent();    // Launch Gateway Agent
+        launchACPEntity();   // Launch data-oriented protocol Pub/Sub entity
+    }
+
+    void launchAgent() {
+        // This method configures and launches the GA with agent-specific libraries
+        ga_agent.launch();
+        // Once the GA agent has been launched, it is also necessary to initialize it
+        structMsg = StructMessage(action="init");
+        ga_agent.processCommand(structMsg);
+    }
+
+    void launchACPEntity() {
+        // This method launches the ACP pub/sub entity with the data-oriented protocol-specific libraries
+
+        acp_pub_sub.launch();
+
+        // The method to get the data from the subscriber need to be configured in the ACP client
+        acp_pub_sub.configure_subscriber(fromAssetTopic, receiveFromBroker);
+    }
+
+    void receiveFromBroker(String fromAssetTopic, ACPMessage acp_msg) {
+        // This function will get the data from the subscriber and set to the global 'acp_msg_content' in order to invoke sendToGA
+        acp_msg_content = ACPMessageFormat(acp_msg.getContent());
+
+    }
+
+    // This is the main loop of the Gateway Manager
+    void main() {
+
+        // First, an instance of the Gateway Manager need to be created
+        gateway_instance = DataOrientedGatewayManager()
+
+        while (true) {
+            // The main loop must be executed cyclically.
+            receiveFromGA();
+            if (acp_msg_content != null) {
+                sendToGA(acp_msg_content);
+                acp_msg_content = null;
+            }
+        }
+    }
+
+    // This method checks if a message has been received from the GA. If true, it receives it to send the task to the asset
+    void receiveFromGA() {
+        structMsg = StructMessage(action="recv");
+        ga_agent.processCommand(structMsg);
+        // If the GA agent has received a message through ACL, it will update the struct message
+        if (structMsg.getContent() != null) {
+            acp_pub_sub.sendToAsset(toAssetTopic, structMsg.getContent());
+        }
+    }
+
+    void sendToGA(ACPMessageFormat acp_msg_content) {
+        structMsg = StructMessage(action="send", content=acp_msg_content);
+        ga_agent.processCommand(structMsg);
+    }
+}

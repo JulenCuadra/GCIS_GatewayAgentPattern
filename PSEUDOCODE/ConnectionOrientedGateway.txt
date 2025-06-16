@@ -1,0 +1,90 @@
+import GatewayAgent;
+import ACPClient;
+
+import agent.specific.libraries;
+import connection.oriented.protocol.specific.libraries;
+
+import StructMessage;
+import ACPMessageFormat;
+
+abstract class ConnectionOrientedGatewayManager extends GenericGatewayManager {
+
+    GatewayAgent ga_agent;
+    ACPClient acp_client;
+
+    // Connection-oriented protocol required data
+    String toAssetEndpoint;
+    String fromAssetEndpoint;
+
+    StructMessage structMsg;
+    ACPMessageFormat acp_msg_content = null;
+
+    // Constructor
+    ConnectionOrientedGateway() {
+        launchAgent();    // Launch Gateway Agent
+        launchACPEntity();   // Launch data-oriented protocol client
+    }
+
+    void launchAgent() {
+        // This method configures and launches the GA with agent-specific libraries
+        ga_agent.launch();
+        // Once the GA agent has been launched, it is also necessary to initialize it
+        structMsg = StructMessage(action="init");
+        ga_agent.processCommand(structMsg);
+    }
+
+    void launchACPEntity() {
+        // This method launches the ACP client with the data-oriented protocol-specific libraries
+
+        acp_client.launch();
+
+        // The method to get data from the asset need to be configured in the ACP client
+        acp_client.configure_polling(fromAssetEndpoint, receiveFromServer); 
+    }
+
+    void receiveFromServer(String fromAssetEndpoint, ACPResource acp_resource) {
+        // This function will get a data from the server (asset) cyclically (via polling) and it will check if it has value. If true, it sets its content to the global 'acp_msg_content' in order to invoke sendToGA
+        // Here's how to enable the asset to send messages in a client-server architecture
+        while(true) {
+            if (acp_resource.getContent() != null)
+                acp_msg_content = ACPMessageFormat(acp_resource.getContent());
+                // After obtaining the value, the server resource must be deleted in order to be used again
+                acp_client.updateResourceToNull(fromAssetEndpoint);
+            }
+        }
+
+    }
+
+
+
+    // This is the main loop of the Gateway Manager
+    void main() {
+
+        // First, an instance of the Gateway Manager need to be created
+        gateway_instance = ConnectionOrientedGatewayManager()
+
+        while (true) {
+            // The main loop must be executed cyclically.
+            receiveFromGA();
+            if (acp_msg_content != null) {
+                sendToGA(acp_msg_content);
+                acp_msg_content = null;
+            }
+        }
+    }
+
+    // This method checks if a message has been received from the GA. If true, it receives it to send the task to the asset
+    void receiveFromGA() {
+        structMsg = StructMessage(action="recv");
+        ga_agent.processCommand(structMsg);
+        // If the GA agent has received a message through ACL, it will update the struct message
+        if (structMsg.getContent() != null) {
+            acp_client.sendToAsset(dataEndpoint, structMsg.getContent());
+        }
+    }
+
+    void sendToGA(ACPMessageFormat acp_msg_content) {
+        structMsg = StructMessage(action="send", content=acp_msg_content);
+        ga_agent.processCommand(structMsg);
+    }
+}

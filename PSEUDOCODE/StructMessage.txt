@@ -1,0 +1,28 @@
+import ACPMessageFormat;
+
+class StructMessage {
+
+    String _action;     // Enumeration of ["init", "recv" and "send"]
+    ACPMessageFormat _acp_msg_content;
+
+    // Constructor
+    public StructMessage(action_value=null, acp_content_value=null) {
+        _action = action_value;
+        _acp_msg_content = acp_content_value;
+    }
+
+    public void setAction(new_action_value) {
+        _action = new_action_value;
+    }
+    public void setContent(new_acp_content_value) {
+        _acp_msg_content = new_acp_content_value;
+    }
+
+    public String getAction() {
+        return _action;
+    }
+
+    public ACPMessageFormat getContent() {
+        return _acp_msg_content;
+    }
+}
